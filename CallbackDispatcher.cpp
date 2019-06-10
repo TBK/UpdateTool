@@ -1,12 +1,12 @@
 /*
 	This file is a part of "Didrole's Update Tool"
-	©2k12, Didrole
+	ï¿½2k12, Didrole
 	
 	License : Public domain
 */
 
-#include "../../Open Steamworks/Steamworks.h"
 #include <map>
+#include <Steamworks.h>
 
 extern HSteamPipe g_hPipe;
 

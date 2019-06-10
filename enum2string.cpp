@@ -1,25 +1,25 @@
 /*
 	This file is a part of "Didrole's Update Tool"
-	©2k12, Didrole
+	ï¿½2k12, Didrole
 	
 	License : Public domain
 */
 
-#include "../../Open Steamworks/Steamworks.h"
+#include <Steamworks.h>
 
 const char* AppState2String(EAppState eState)
 {
-	if(eState & k_EAppStateReconfiguring)
+	if(eState & k_EAppUpdateStateReconfiguring)
 		return "Reconfiguring";
-	if(eState & k_EAppStatePreallocating)
+	if(eState & k_EAppUpdateStatePreallocating)
 		return "Preallocating";
-	if(eState & k_EAppStateDownloading)
+	if(eState & k_EAppUpdateStateDownloading)
 		return "Downloading";
-	if(eState & k_EAppStateStaging)
+	if(eState & k_EAppUpdateStateStaging)
 		return "Staging";
-	if(eState & k_EAppStateCommitting)
+	if(eState & k_EAppUpdateStateCommitting)
 		return "Committing";
-	if(eState & k_EAppStateValidating)
+	if(eState & k_EAppUpdateStateValidating)
 		return "Validating";
 	if(eState & k_EAppStateFullyInstalled)
 		return "Installed";
@@ -156,7 +156,7 @@ const char* EAppUpdateError2String(EAppUpdateError eError)
 		"Invalid platform",
 	};
 
-	if(eError >= k_EAppErrorNone && eError <= k_EAppErrorInvalidPlatform)
+	if(eError >= k_EAppUpdateErrorNoError && eError <= k_EAppUpdateErrorInvalidPlatform)
 		return s_szStrings[eError];
 	else
 		return "Invalid EAppUpdateError";

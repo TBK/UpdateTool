@@ -1,6 +1,6 @@
 /*
 	This file is a part of "Didrole's Update Tool"
-	©2k12, Didrole
+	ï¿½2k12, Didrole
 	
 	License : Public domain
 */
@@ -8,9 +8,10 @@
 #include <stdarg.h>
 #include <math.h>
 
-#include "CCommandLine.h"
+#include <Steamworks.h>
+#include <Interface_OSW.h>
 
-#include "../../Open Steamworks/Steamworks.h"
+#include "CCommandLine.h"
 #include "enum2string.h"
 #include "utils.h"
 
@@ -158,7 +159,7 @@ bool CApplication::UninstallApp(AppId_t uAppId)
 	}
 
 	EAppUpdateError eError = g_pClientAppManager->UninstallApp(uAppId, true);
-	if(eError != k_EAppErrorNone)
+	if(eError != k_EAppUpdateErrorNoError)
 	{
 		Error("Uninstallation failed: %s\n", EAppUpdateError2String(eError));
 		return false;
@@ -182,7 +183,7 @@ void CApplication::ShowAvailableApps()
 		g_pClientBilling->GetPackageInfo(uPackageID, &cAppIds, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 		AppId_t* pAppIds = new AppId_t[cAppIds];
-		g_pClientBilling->GetAppsInPackage(uPackageID, pAppIds, cAppIds, true, false);
+		g_pClientBilling->GetAppsInPackage(uPackageID, pAppIds, cAppIds);
 
 		char szAppName[256];
 		char szContentType[2];
@@ -224,7 +225,7 @@ void CApplication::OnLicensesUpdated(LicensesUpdated_t* pParam)
 
 			AppId_t uAppId = commandLine.ParmValue("-game", (int)k_uAppIdInvalid);
 
-			if(!g_pClientApps->RequestAppInfoUpdate(&uAppId, 1, true))
+			if(!g_pClientApps->RequestAppInfoUpdate(&uAppId, 1))
 			{
 				Error("Failed to request appinfo update.\n");
 				this->Exit(EXIT_FAILURE);
@@ -251,7 +252,7 @@ void CApplication::OnAppEventStateChange(AppEventStateChange_t* pParam)
 {
  	if(pParam->m_nAppID == this->m_uInstallingAppId)
 	{
-		if(pParam->m_eAppError != k_EAppErrorNone)
+		if(pParam->m_eAppError != k_EAppUpdateErrorNoError)
 		{
 			Msg("Update failed: %s\n", EAppUpdateError2String(pParam->m_eAppError));
 			m_uInstallingAppId = k_uAppIdInvalid;
@@ -260,7 +261,7 @@ void CApplication::OnAppEventStateChange(AppEventStateChange_t* pParam)
 		}
 		else
 		{
-			if(!(pParam->m_eNewState & k_EAppStateUpdateRequired) && !(pParam->m_eNewState & k_EAppStateUpdateRunning) && !(pParam->m_eNewState & k_EAppStateValidating) && pParam->m_eNewState & k_EAppStateFullyInstalled)
+			if(!(pParam->m_eNewState & k_EAppStateUpdateRequired) && !(pParam->m_eNewState & k_EAppStateUpdateRunning) && !(pParam->m_eNewState & k_EAppUpdateStateValidating) && pParam->m_eNewState & k_EAppStateFullyInstalled)
 			{
 				Msg("Up to date.\n", m_uInstallingAppId);
 				m_uInstallingAppId = k_uAppIdInvalid;
@@ -271,7 +272,7 @@ void CApplication::OnAppEventStateChange(AppEventStateChange_t* pParam)
 	}
 	else if(pParam->m_nAppID == this->m_uUninstallingAppId)
 	{
-		if(pParam->m_eAppError != k_EAppErrorNone)
+		if(pParam->m_eAppError != k_EAppUpdateErrorNoError)
 		{
 			Msg("Uninstallation failed: %s\n", EAppUpdateError2String(pParam->m_eAppError));
 			m_uUninstallingAppId = k_uAppIdInvalid;
@@ -289,7 +290,7 @@ void CApplication::OnAppEventStateChange(AppEventStateChange_t* pParam)
 	}
 	else
 	{
-		if(pParam->m_eNewState & k_EAppStateUpdateRequired || pParam->m_eNewState & k_EAppStateUpdateRunning || pParam->m_eNewState & k_EAppStateValidating)
+		if(pParam->m_eNewState & k_EAppStateUpdateRequired || pParam->m_eNewState & k_EAppStateUpdateRunning || pParam->m_eNewState & k_EAppUpdateStateValidating)
 		{
 			g_pClientAppManager->ChangeAppPriority(pParam->m_nAppID, k_EAppDownloadPriorityPaused);
 		}
@@ -313,7 +314,7 @@ CApplication::EUpdateResult CApplication::InstallOrUpdateApp(AppId_t uAppId, boo
 	}
 	else
 	{
-		if(cszBetaPassword && !g_pClientAppManager->BCacheBetaPassword(uAppId, cszBetaKey, cszBetaPassword))
+		if(cszBetaPassword && !g_pClientAppManager->BHasCachedBetaPassword(uAppId, cszBetaPassword))
 		{
 			Error("Invalid beta password, using public branch instead.\n");
 		}
@@ -335,8 +336,8 @@ CApplication::EUpdateResult CApplication::InstallOrUpdateApp(AppId_t uAppId, boo
 	if(eState == k_EAppStateInvalid || eState & k_EAppStateUninstalled)
 	{
 		Msg("Installing %u:%s ...\n", uAppId, GetAppName(uAppId));
-		EAppUpdateError eError = g_pClientAppManager->InstallApp(uAppId, NULL, 0, false);
-		if(eError != k_EAppErrorNone)
+		EAppUpdateError eError = g_pClientAppManager->InstallApp(uAppId, NULL, false);
+		if(eError != k_EAppUpdateErrorNoError)
 		{
 			Error("Installation failed: %s\n", EAppUpdateError2String(eError));
 			return k_EUpdateResultFailed;
@@ -479,6 +480,7 @@ void* g_pUsePICS = NULL;
 bool CApplication::InitSteam()
 {
 	CreateInterfaceFn pCreateInterface = m_steamLoader.GetSteam3Factory();
+
 	if(!pCreateInterface)
 	{
 		Error("Unable to get Steam3 factory.\n");
@@ -486,6 +488,7 @@ bool CApplication::InitSteam()
 	}
 
 	g_pClientEngine = (IClientEngine*)pCreateInterface(CLIENTENGINE_INTERFACE_VERSION, NULL);
+
 	if(!g_pClientEngine)
 	{
 		Error("Unable to get IClientEngine.\n");
@@ -493,48 +496,55 @@ bool CApplication::InitSteam()
 	}
 
 	g_hUser = g_pClientEngine->CreateLocalUser(&g_hPipe, k_EAccountTypeIndividual);
+
 	if(!g_hPipe || !g_hUser)
 	{
 		Error("Unable to create a local user.\n");
 		return false;
 	}
 
-	g_pClientUser = g_pClientEngine->GetIClientUser(g_hUser, g_hPipe, CLIENTUSER_INTERFACE_VERSION);
+	g_pClientUser = g_pClientEngine->GetIClientUser(g_hUser, g_hPipe);
+
 	if(!g_pClientUser)
 	{
 		Error("Unable to get IClientUser.\n");
 		return false;
 	}
 
-	g_pClientAppManager = g_pClientEngine->GetIClientAppManager(g_hUser, g_hPipe, CLIENTAPPMANAGER_INTERFACE_VERSION);
+	g_pClientAppManager = g_pClientEngine->GetIClientAppManager(g_hUser, g_hPipe);
+
 	if(!g_pClientAppManager)
 	{
 		Error("Unable to get IClientAppManager.\n");
 		return false;
 	}
 
-	g_pClientApps = g_pClientEngine->GetIClientApps(g_hUser, g_hPipe, CLIENTAPPS_INTERFACE_VERSION);
+	g_pClientApps = g_pClientEngine->GetIClientApps(g_hUser, g_hPipe);
+
 	if(!g_pClientApps)
 	{
 		Error("Unable to get IClientApps.\n");
 		return false;
 	}
 
-	g_pClientBilling = g_pClientEngine->GetIClientBilling(g_hUser, g_hPipe, CLIENTBILLING_INTERFACE_VERSION);
+	g_pClientBilling = g_pClientEngine->GetIClientBilling(g_hUser, g_hPipe);
+
 	if(!g_pClientBilling)
 	{
 		Error("Unable to get IClientBilling.\n");
 		return false;
 	}
 
-	g_pClientConfigStore = g_pClientEngine->GetIClientConfigStore(g_hUser, g_hPipe, CLIENTCONFIGSTORE_INTERFACE_VERSION);
+	g_pClientConfigStore = g_pClientEngine->GetIClientConfigStore(g_hUser, g_hPipe);
+
 	if(!g_pClientConfigStore)
 	{
 		Error("Unable to get IClientConfigStore.\n");
 		return false;
 	}
 
-	g_pClientUtils = g_pClientEngine->GetIClientUtils(g_hPipe, CLIENTUTILS_INTERFACE_VERSION);
+	g_pClientUtils = g_pClientEngine->GetIClientUtils(g_hPipe);
+	
 	if(!g_pClientUtils)
 	{
 		Error("Unable to get IClientUtils.\n");
@@ -835,7 +845,7 @@ bool CApplication::LogOn()
 #endif
 		pSetValue(g_pUsePICS, "1");
 
-		g_pClientUser->LogOn(false, CSteamID(-1, k_EUniversePublic, k_EAccountTypeAnonUser)); // HACK: The accountID should be 0 not -1, but 0 triggers asserts in the config store.
+		g_pClientUser->LogOn(CSteamID(-1, k_EUniversePublic, k_EAccountTypeAnonUser)); // HACK: The accountID should be 0 not -1, but 0 triggers asserts in the config store.
 
 		Msg("Logging on Steam anonymously ...\n");
 	}
@@ -874,7 +884,7 @@ bool CApplication::LogOn()
 
 		uint64 ullSteamID = g_pClientConfigStore->GetUint64(k_EConfigStoreInstall, szSteamIDKey, 0);
 
-		g_pClientUser->LogOn(false, CSteamID(ullSteamID & 0xFFFFFFFF, k_unSteamUserConsoleInstance, k_EUniversePublic, k_EAccountTypeIndividual));
+		g_pClientUser->LogOn(CSteamID(ullSteamID & 0xFFFFFFFF, k_unSteamUserConsoleInstance, k_EUniversePublic, k_EAccountTypeIndividual));
 
 		Msg("Logging on Steam with account %s ...\n", cszUsername);
 	}
@@ -897,7 +907,7 @@ bool CApplication::RunFrame()
 	if(m_uInstallingAppId != k_uAppIdInvalid)
 	{
 		EAppState eState = g_pClientAppManager->GetAppInstallState(m_uInstallingAppId);
-		if(eState & k_EAppStateUpdateRequired || eState & k_EAppStateValidating || eState & k_EAppStateUpdateRunning)
+		if(eState & k_EAppStateUpdateRequired || eState & k_EAppUpdateStateValidating || eState & k_EAppStateUpdateRunning)
 		{
 			AppUpdateInfo_s updateInfo;
 			if(g_pClientAppManager->GetUpdateInfo(m_uInstallingAppId, &updateInfo))
